@@ -1,0 +1,181 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+%\usepackage[catalan]{babel}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{comment}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[shortlabels]{enumitem}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\usepackage{tcolorbox}
+\usepackage{pdflscape}
+\usepackage{makecell}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage{tocloft}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage{pdfpages}
+\usetikzlibrary{trees}
+\usetikzlibrary{shapes,arrows,positioning}
+
+\geometry{a4paper, top=2.3cm, bottom=2cm, left=2.3cm, right=2.3cm}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{style=mystyle}
+\lstset{
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+           {ü}{{\"u}}1 {ñ}{{\~n}}1 {ç}{{\c{c}}}1
+}
+
+% Define bag style for tikz
+\tikzset{bag/.style={rectangle, draw}}
+
+\title{\LARGE What is GraphQL}
+\author{Aprenentatge i raonament automàtic}
+\date{\today}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{GraphQL}
+\fancyhead[R]{Distributed computing}
+
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\begin{document}
+
+\begin{titlepage}
+  \begin{center}
+
+    \includegraphics[width=5cm]{udl.png}
+    \hspace{0.2cm}
+    \includegraphics[width=6cm]{eps.jpg}
+    
+    \vspace{1cm}
+    \begin{tikzpicture}[line width=1pt]
+      \draw (0,0) -- (\textwidth,0);
+    \end{tikzpicture}
+    
+    \vspace{3cm}
+    {\LARGE \textbf{What's GraphQL}
+
+    \vspace{3cm}
+    {\Large Activity 2: Distributed computing applications report}
+    
+    \vspace{3cm}
+    
+    \vfill
+    {\Large \today}
+    \vfill
+    
+    \vfill
+
+    {\Large May Castells Raga \par}
+    {\Large Anna Marin Nuño \par}
+    \vfill
+    
+    \vspace{1cm}
+    {\large Distributed Computing\\}
+    {\large Grau en Enginyeria Informàtica\\}
+    {\large Universitat de Lleida}
+    
+    \vspace{1cm}
+    \begin{tikzpicture}[line width=1pt]
+      \draw (0,0) -- (\textwidth,0);
+    \end{tikzpicture}
+  \end{center}
+\end{titlepage}
+\newpage
+
+% Índice
+%\renewcommand{\contentsname}{Índex}
+\tableofcontents
+\newpage
+
+\section{Third Problem (3.5 Points)}
+Consider the following C program that contains a sort function, that it is not implemented, and it should sort an array of N integers. It also contains a function, checkSort, that it is intended to be used for testing, with assertions, that the sort function works as expected.
+Per trobar la K, es necessita aquestes dues proves:
+\begin{itemize}
+    \item Amb K = 4 iteracions encara existeix una execució on el bucle es podria desenredar un cop més.
+    
+    \texttt{cbmc  --verbosity 8 --no-standard-checks --trace  --unwind 4 --unwinding-assertions  sort.c }
+    
+    \texttt{VERIFICATION FAILED, Violated property: file sort.c function checkSort line 33 thread 0 unwinding assertion loop 0}
+    
+    \item Amb K = 5 iteracions ja no existeix cap iteració on el bucle es desenredi aquest nombre de cops.
+    
+    \texttt{cbmc  --verbosity 8 --no-standard-checks --trace  --unwind 5 --unwinding-assertions  sort.c }
+\end{itemize}
+
+\begin{enumerate}
+    \item Implement the sort function with your favourite sorting algorithm.
+    \begin{lstlisting}
+void sort (int8_t a[], int size) {
+	 for (int i = 0; i < size - 1; i++)
+    {
+
+        for (int j = 0; j < size - i - 1; j++)
+        {
+            if (a[j] > a[j + 1])
+                swap(a, j, j + 1);
+        }
+    }
+}
+
+
+void swap(int8_t *arr, int i, int j)
+{
+    int8_t temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+}
+    \end{lstlisting}
+    \item Write assertions at the end of the checkSort function to verify if your sorting algorithm works as expected. Check with cbmc the function checkSort, but with five different values of N: {4, 6, 8, 10, 12}. Write down the computation time needed by cbmc to verify the program with these four different array sizes. Do you think that the computation time increases exponentially ?
+    
+    \begin{table}[H]
+        \centering
+        \begin{tabular}{cccccc}
+            N & 4 & 6 & 8 & 10 & 12 \\
+            \hline
+            time & 0.100s & 0.146 & 0.282 & 0.694 & 1.933 \\
+        \end{tabular}
+        \caption{Caption}
+        \label{tab:placeholder}
+    \end{table}
+    \item Introduce an small error in the implementation of your sort function. Then, check it again (with the minimum size for N) to see if cbmc finds the error.
+\end{enumerate}
+\end{document}
+
+
+
