@@ -1,7 +1,7 @@
 \documentclass[12pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-%\usepackage[catalan]{babel}
+\usepackage[catalan]{babel}
 \usepackage{amsmath, amssymb, amsfonts}
 \usepackage{graphicx}
 \usepackage{url}
@@ -54,20 +54,21 @@
 \lstset{style=mystyle}
 \lstset{
   literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
-           {ü}{{\"u}}1 {ñ}{{\~n}}1 {ç}{{\c{c}}}1
+           {ü}{{\"u}}1 {ñ}{{\~n}}1 {ç}{{\c{c}}}1 {à}{{\`a}}1 {è}{{\`e}}1 {ò}{{\`o}}1
+           {ï}{{\"i}}1 {·}{{$\cdot$}}1
 }
 
 % Define bag style for tikz
 \tikzset{bag/.style={rectangle, draw}}
 
-\title{\LARGE What is GraphQL}
-\author{Aprenentatge i raonament automàtic}
+\title{\LARGE Pràctica 2 - CBMC}
+\author{Verificació de Software}
 \date{\today}
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{GraphQL}
-\fancyhead[R]{Distributed computing}
+\fancyhead[L]{SV - Pràctica 2}
+\fancyhead[R]{CBMC}
 
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -88,10 +89,10 @@
     \end{tikzpicture}
     
     \vspace{3cm}
-    {\LARGE \textbf{What's GraphQL}
+    {\LARGE \textbf{Homework Assignment: CBMC}}
 
-    \vspace{3cm}
-    {\Large Activity 2: Distributed computing applications report}
+    \vspace{2cm}
+    {\Large Pràctica 2}
     
     \vspace{3cm}
     
@@ -106,7 +107,7 @@
     \vfill
     
     \vspace{1cm}
-    {\large Distributed Computing\\}
+    {\large Verificació de Software (SV)\\}
     {\large Grau en Enginyeria Informàtica\\}
     {\large Universitat de Lleida}
     
@@ -118,51 +119,249 @@
 \end{titlepage}
 \newpage
 
-% Índice
-%\renewcommand{\contentsname}{Índex}
 \tableofcontents
 \newpage
 
-\section{Third Problem (3.5 Points)}
-Consider the following C program that contains a sort function, that it is not implemented, and it should sort an array of N integers. It also contains a function, checkSort, that it is intended to be used for testing, with assertions, that the sort function works as expected.
-Per trobar la K, es necessita aquestes dues proves:
+\section{Primer Problema: division.c}
+
+\subsection{1.1 Anàlisi de l'Unwinding i Assumpcions}
+
+El programa s'encarrega de calcular la divisió d'un dividend negatiu ($D$) entre un divisor positiu ($d$). Inicialment, les assumpcions del codi permetien que $d \ge 0$. Aquesta cota ens planteja un problema de verificació: si el divisor és zero, el residu no varia mai i el bucle esdevé infinit. Com que CBMC necessita un escenari finit per treballar, hem canviat l'assumpció a $d > 0$, una restricció que encaixa amb la definició de divisió per un nombre positiu.
+
+Per triar un valor correcte d'unwinding (desenredament), hem de considerar el cas més desfavorable: $D = -600$ i $d = 1$. Aquí el bucle necessitarà 600 iteracions per arribar a un residu no negatiu.
+
+És important entendre com funciona l'\textit{unwinding assertion}: CBMC només considera que la verificació és exitosa si pot garantir que la condició de sortida del bucle es compleix (és a dir, la guard es nega) en algun moment dins del límit d'iteracions permès. Si la condició del bucle seguís sent certa després de les iteracions màximes, l'asserció fallaria. 
+
+Si provem amb un valor de 600, veiem que l'eina ens avisa que el bucle encara podria requerir més passos:
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --unwind 600 --unwinding-assertions division.c}
+\end{tcolorbox}
+\begin{verbatim}
+Violated property:
+  file division.c function main line 10 thread 0
+  unwinding assertion loop 0: FAILURE
+...
+VERIFICATION FAILED
+\end{verbatim}
+
+Amb el valor ajustat de 601, comprovem que totes les rutes del bucle queden analitzades, ja que s'ha sortit del bucle:
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --unwind 601 --unwinding-assertions division.c}
+\end{tcolorbox}
+\begin{verbatim}
+VERIFICATION SUCCESSFUL
+\end{verbatim}
+Per tant, el bucle realitza com a molt 600 iteracions, i per garantir que se'n surt calen 601 iteracions.
+
+\subsection{1.2 Verificació de l'Invariant i Localització del Bug}
+
+Per assegurar la correctesa de l'algorisme, hem definit un invariant que s'ha de complir a cada inici de la iteració del bucle: $D = d \cdot q + r$. Fent servir l'opció \texttt{--trace}, podem observar la traça completa del contraexemple on es produeix la violació amb valors concrets:
+
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --trace --unwind 10 division\_bug.c}
+\end{tcolorbox}
+
+\begin{verbatim}
+** Results:
+[main.assertion.1] line 9 Invariant: D == d*q + r: FAILURE
+
+Trace for main.assertion.1:
+State 11: D=-561, d=17, r=0, q=0
+State 16: r=-561 (carreguem el dividend a r)
+State 17: q=0
+...
+(Inici del bucle: r < 0 es compleix)
+(Condició r <= -2*d: -561 <= -34 -> CERT)
+State 21: r=-527 (r = r + 34)
+State 23: q=-1   (decrement del quocient: q--)
+
+Violated property:
+  Invariant: D == d*q + r
+  -561 == 17 * (-1) + (-527) => -561 == -544 (FALS!)
+\end{verbatim}
+
+\textbf{Explicació detallada de la traça:} En aquest escenari, el dividend és $-561$ i el divisor és $17$. L'invariant inicial es compleix ($D=-561, q=0, r=-561$). En entrar al bucle, el programa detecta que pot aplicar el "salt doble" perquè el residu $(-561)$ és menor o igual al doble del divisor negat $(-34)$. Així doncs, suma $34$ a $r$, obtenint $-527$. Tanmateix, tal com mostra l'estat 23, el quocient només es decrementat en una unitat ($q=-1$). Al final de la iteració, l'invariant passa a ser $17 \times (-1) + (-527) = -544$, que difereix del dividend original $-561$. Això ens confirma visualment que per cada $2 \cdot d$ afegit a $r$, cal restar $2$ a $q$.
+
+\textbf{Solució:} Hem corregit aquest desequilibri fent que el decrement del quocient sigui consistent amb la quantitat sumada al residu. De manera que quan \texttt{r = r + (2*d)}, el quocient rebi \texttt{q = q - 2}:
+
+\begin{lstlisting}[language=C]
+    if (r <= -(2*d)) { 
+        r = r + (2*d); 
+        q = q - 2;
+    } else { 
+        ...
+\end{lstlisting}
+
+\subsection{1.3 Cerca d'Errors de Desbordament (Overflow)}
+
+Un cop resolt el problema lògic, ens fixem si l'operació d'aritmetica pot desbordar el rang d'enters de 32 bits. Per fer-ho, primer demanem a CBMC que llisti les propietats de possibles desbordaments:
+
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --show-properties --signed-overflow-check division.c}
+\end{tcolorbox}
+
+Entre d'altres, trobem el risc de multiplicació a la línia on calculàvem $2 \cdot d$:
+\begin{verbatim}
+Property main.overflow.1:
+  arithmetic overflow on signed * in 2 * d
+  !overflow("*", signed int, 2, d)
+\end{verbatim}
+
+Per comprovar aquest risc en el codi original, demanem a l'eina que analitzi exclusivament aquesta propietat:
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --signed-overflow-check --property main.overflow.1 division\_original.c}
+\end{tcolorbox}
+\begin{verbatim}
+** Results:
+[main.overflow.1] line 11 arithmetic overflow on signed * in 2*d: FAILURE
+VERIFICATION FAILED
+\end{verbatim}
+
+\textbf{Anàlisi de l'error:} Com s'observa, la propietat no és segura. Això es deu al fet que si $d$ agafa valors molt elevats, el producte $2 \cdot d$ pot excedir la capacitat d'un enter de 32 bits, provocant un desbordament. Per tal d'evitar aquest risc mantenint la generalitat del programa, hem optat per substituir les operacions per sumes o comparacions equivalents que no generin desbordaments.
+
+\begin{lstlisting}[language=C]
+    // Hem canviat r <= -2*d per r + d <= -d
+    // I el producte per dues sumes independents
+    if (r + d <= -d) { 
+        r = r + d;
+        r = r + d; 
+        q = q - 2;
+    } else { 
+        r = r + d; 
+        q = q - 1;
+    }
+\end{lstlisting}
+
+Amb aquestes modificacions, la verificació de desbordaments ens retorna (\texttt{SUCCESSFUL}) i el programa compleix les post-condicions finals de la divisió (\texttt{r >= 0} i \texttt{r < d}).
+Una altra possible solució seria usar l'algorisme de divisió clàssic, que es mostra a continuació:
+
+\begin{lstlisting}[language=C]
+int div(int D, int d) {
+    int r = D;
+    int q = 0;
+    while (r < 0) {
+        r = r + d;
+        q = q - 1;
+    }
+    return q;
+}
+\end{lstlisting}
+
+\section{Segon Problema: simpleWhile.c}
+
+L'objectiu en aquest segon exercici és comprovar la correctesa d'un programa que vol buscar el nombre parell màxim dins un \textit{array} generat aleatòriament. La mida o llargària fixada pels enters d'anàlisi és constant de \texttt{\#define N 10}.
+
+\subsection{2.1 Determinació de l'Unwinding}
+
+Atès que estem treballant amb bucles \texttt{for} amb un límit fix definit per \texttt{N = 10}, el nombre d'iteracions necessari és senzill de calcular.
+
+Si provem amb un desenredament de 10, l'eina ens indica que encara hi ha possibles iteracions pendents:
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --unwind 10 --unwinding-assertions simpleWhile.c}
+\end{tcolorbox}
+\begin{verbatim}
+[main.unwind.0] line 10 unwinding assertion loop 0: FAILURE
+VERIFICATION FAILED
+\end{verbatim}
+
+Per tant, utilitzem $K=11$ per a veure si amb 11 se surt del bucle: 
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --unwind 11 --unwinding-assertions simpleWhile.c}
+\end{tcolorbox}
+\begin{verbatim}
+VERIFICATION SUCCESSFUL
+\end{verbatim}
+Per tant, el bucle realitza com a molt 10 iteracions, i per garantir que se'n surt calen 11 iteracions.
+
+\subsection{2.2 Verificació de Requisits amb Assercions}
+
+Un cop finalitzada l'execució del bucle, hem afegit les següents assercions per validar que el programa compleix els requisits esperats:
+
 \begin{itemize}
-    \item Amb K = 4 iteracions encara existeix una execució on el bucle es podria desenredar un cop més.
-    
-    \texttt{cbmc  --verbosity 8 --no-standard-checks --trace  --unwind 4 --unwinding-assertions  sort.c }
-    
-    \texttt{VERIFICATION FAILED, Violated property: file sort.c function checkSort line 33 thread 0 unwinding assertion loop 0}
-    
-    \item Amb K = 5 iteracions ja no existeix cap iteració on el bucle es desenredi aquest nombre de cops.
-    
-    \texttt{cbmc  --verbosity 8 --no-standard-checks --trace  --unwind 5 --unwinding-assertions  sort.c }
+    \item \textbf{(a) Si hi ha components parells, llavors \textit{maxeven} conté el més gran:} Això es comprova verificant que \textit{maxeven} existia a la llista, és efectivament un nombre parell i, per a cada component \textit{i} parell dins de l'array, aquest és menor o igual a \textit{maxeven}.
+    \item \textbf{(b) Quan \textit{maxeven} és exactament 1, tots els enters a l'array són senars:} Iterarem comprovant que residu en div per 2 és $\neq 0$.
 \end{itemize}
 
-\begin{enumerate}
-    \item Implement the sort function with your favourite sorting algorithm.
-    \begin{lstlisting}
-void sort (int8_t a[], int size) {
-	 for (int i = 0; i < size - 1; i++)
-    {
+El codi integrat dins de `simpleWhile.c` queda representat com:
 
-        for (int j = 0; j < size - i - 1; j++)
-        {
-            if (a[j] > a[j + 1])
-                swap(a, j, j + 1);
+\begin{lstlisting}[language=C]
+   if (maxeven != 1) {
+      for (i = 0; i < N; i++) {
+        if (numbers[i] % 2 == 0) {
+          __CPROVER_assert(maxeven >= numbers[i], 
+            "maxeven és >= que qualsevol parell");
         }
-    }
-}
+      }
+      int found = 0;
+      for (i = 0; i < N; i++) { if (numbers[i] == maxeven) found = 1; }
+      __CPROVER_assert(found == 1, "maxeven existeix a l'array");
+      __CPROVER_assert(maxeven % 2 == 0, "maxeven és parell");
+   }
+   else {
+      // No hi ha nombres parells: tots són senars
+      for (i = 0; i < N; i++) {
+         __CPROVER_assert(numbers[i] % 2 != 0, "nombres senars");
+      }
+   }
+\end{lstlisting}
+
+\subsection{2.2 Verificació d'accessos fora de rang (\textit{pointer check})}
+
+Per verificar que no hi hagi errors d'accés fora de rang (\textit{out of bounds}) en les línies que operen amb l'array \texttt{numbers}. Per dur a terme aquesta comprovació, fem servir l'opció \texttt{--pointer-check} de CBMC.
 
 
-void swap(int8_t *arr, int i, int j)
-{
-    int8_t temp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = temp;
-}
-    \end{lstlisting}
-    \item Write assertions at the end of the checkSort function to verify if your sorting algorithm works as expected. Check with cbmc the function checkSort, but with five different values of N: {4, 6, 8, 10, 12}. Write down the computation time needed by cbmc to verify the program with these four different array sizes. Do you think that the computation time increases exponentially ?
-    
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --unwind 11 \\--unwinding-assertions --pointer-check simpleWhile.c}
+\end{tcolorbox}
+\begin{verbatim}
+** Results:
+...
+VERIFICATION SUCCESSFUL
+\end{verbatim}
+
+Amb aquest resultat (\texttt{SUCCESSFUL}), CBMC ens dóna la certesa matemàtica que totes les operacions d'accés al vector \texttt{numbers[i]} es troben dins dels límits del buffer $[0, N-1]$ i no es produeix cap violació de segment ni accés a memòria no autoritzada.
+
+
+\section{Tercer Problema: sort.c}
+
+En l'últim exercici implementem l'algorisme d'ordenació de la \textit{Bombolla (Bubble Sort)} per ordenar una cadena d'enters de petit a gran. Aquest algorisme funciona comparant repetidament parelles d'elements adjacents i intercanviant-los si estan en l'ordre incorrecte. En cada passada completa per l'array, l'element més gran que encara no està al seu lloc "flota" cap a la seva posició definitiva al final de l'estructura.
+
+\subsection{3.1 Unwinding i Correcció de l'Assumpció}
+
+En l'algorisme d'ordenació, el temps de verificació depèn de la mida $N$ de l'array. Per a determinar l'unwinding necessari, hem de fixar-nos en tots els bucles del programa. Tot i que els bucles de l'algorisme \textit{sort} iteren $N-1$ vegades, el bucle d'inicialització a la funció \texttt{checkSort} itera exactament $N$ vegades. Per tant, per satisfer l'\textit{unwinding assertion} global, necessitem un valor de $K = N+1$.
+
+Per exemple, si usem $N=8$, provar amb $K=8$ ens retornarà un error de verificació perquè el bucle d'inicialització encara no hauria confirmat la seva sortida:
+
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --unwind 8 --unwinding-assertions sort.c}
+\end{tcolorbox}
+\begin{verbatim}
+[checkSort.unwind.0] line 33 unwinding assertion loop 0: FAILURE
+VERIFICATION FAILED
+\end{verbatim}
+(Nota: la línia 33 correspon al bucle \texttt{for (i = 0; i < N; ++i)} d'inicialització).
+
+En canvi, amb $K=9$, la verificació es completa sense problemes:
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{\# cbmc --no-standard-checks --unwind 9 --unwinding-assertions sort.c}
+\end{tcolorbox}
+\begin{verbatim}
+VERIFICATION SUCCESSFUL
+\end{verbatim}
+
+Cal esmentar que el codi original incloïa una assumpció incorrecta: \texttt{array[i] <= -20}. Atès que això entrava en conflicte amb els rangs previstos (deixant l'espai de cerca gairebé buit), ho hem esmenat per \texttt{array[i] >= -20}, assegurant un interval de treball vàlid entre -20 i 20.
+
+\subsection{3.2 Anàlisi de temps de còmput}
+
+Es fa ús de l'algorisme de la \textit{Bombolla (Bubble Sort)} atès que és intuïtiu i clar. Amb CBMC es crida especificant $\text{unwind} = N + 1$:
+
+
+\begin{tcolorbox}[colback=black!85, coltext=white]
+\texttt{cbmc --no-standard-checks --unwind <N+1> \\--unwinding-assertions sort.c}
+\end{tcolorbox}
+
+Presentem en la següent taula els temps analítics executats sobre un OrangePi5+(ARM64) corrent Linux.
+
     \begin{table}[H]
         \centering
         \begin{tabular}{cccccc}
@@ -170,12 +369,39 @@ void swap(int8_t *arr, int i, int j)
             \hline
             time & 0.100s & 0.146 & 0.282 & 0.694 & 1.933 \\
         \end{tabular}
-        \caption{Caption}
+        \caption{Temps real en verificació de CBMC de la funció sort per la variable array size (N).}
         \label{tab:placeholder}
     \end{table}
-    \item Introduce an small error in the implementation of your sort function. Then, check it again (with the minimum size for N) to see if cbmc finds the error.
-\end{enumerate}
+
+\textbf{L'increment del temps és realment exponencial?} \\
+D'acord amb les dades recollides a la taula, s'aprecia com el temps augmenta de manera molt més ràpida que la mida de l'array. Per exemple, passar de $N=10$ a $N=12$ (un increment molt petit d'elements) gairebé triplica el temps de computació. Aquesta tendència és característica del \textit{bounded model checking}: en incrementar el nombre d'elements i d'iteracions, el programa GOTO resultant creix en complexitat i el nombre de variables i clàusules que el solucionador SAT ha de gestionar es dispara. Aquest fenomen, conegut com l'explosió de l'espai d'estats, fa que la verificació completa de llistes grans sigui ràpidament intractable pel que fa a recursos de temps i memòria.
+
+\subsection{3.3 Introducció Controlada de Defectes}
+
+Per posar a prova la capacitat de CBMC de trobar errors, hem introduït un error simple en la implementació de l'ordenació: fer que un dels bucles acabi abans d'hora (\texttt{i < size - 2}). Això provoca que l'algorisme no completi l'última passada necessària per garantir l'ordre total.
+
+\textbf{Anàlisi detallada de la traça:} Per il·lustrar l'error, hem utilitzat un cas amb $N=4$ i l'entrada desordenada \texttt{\{1, 1, 2, 0\}}. A continuació presentem l'evolució dels estats segons CBMC:
+
+\begin{verbatim}
+State 30: array={ 1, 1, 2, 0 } (Càrrega de l'entrada inicial)
+...
+(Passada i=0, j=2): es compara array[2]=2 amb array[3]=0.
+Com que 2 > 0, s'executa el SWAP:
+State 60: array[2]=0
+State 61: array[3]=2 (L'array ara és { 1, 1, 0, 2 })
+...
+(Passada i=1, j=1): es compara array[1]=1 amb array[2]=0.
+Com que 1 > 0, s'executa el SWAP:
+State 84: array[1]=0
+State 85: array[2]=1 (L'array ara és { 1, 0, 1, 2 })
+...
+(Final del bucle extern: i=2. Condició i < size-2: 2 < 2 -> FALS)
+El bucle s'atura precipitadament.
+
+Violated property:
+  Array is not sorted (array[0] <= array[1] -> 1 <= 0) : FAILURE
+\end{verbatim}
+
+\textbf{Discussió del contraexemple:} L'algorisme de la bombolla necessita $N-1$ passades per garantir l'ordre en el pitjor dels casos. Amb $N=4$, caldrien $3$ passades (per $i=0, 1, 2$). Començant amb \texttt{\{1, 1, 2, 0\}}, després de la primera passada ($i=0$) el 2 arriba al final. En la segona ($i=1$), el 0 avança una posició cap a l'esquerra. En aquest punt l'array és \texttt{\{1, 0, 1, 2\}}. El bug que hem injectat (\texttt{i < size - 2}) fa que el bucle ignori la darrera passada necessària. Així, quan CBMC verifica la propietat d'ordenació, troba immediatament que el primer element (1) és més gran que el segon (0). Aquest contraexemple prova que l'algorisme és incomplet sota aquesta condició de tall, i ens permet concloure amb èxit les tasques de verificació proposades en aquesta pràctica.
+
 \end{document}
-
-
-

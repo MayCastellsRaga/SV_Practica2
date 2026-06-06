@@ -15,10 +15,28 @@ int main()
      } 
    }
    if (maxeven != 1) {
-      // there are even numbers in the array,
-      // So check that  maxeven is the greatest one of them
+      // Hi ha nombres parells a l'array
+      // Comprovar que maxeven és el més gran de tots els parells
+      for (i = 0; i < N; i++) {
+        if (numbers[i] % 2 == 0) {
+          __CPROVER_assert(maxeven >= numbers[i], 
+            "maxeven ha de ser >= que qualsevol nombre parell");
+        }
+      }
+      // Comprovar que maxeven existeix a l'array
+      int found = 0;
+      for (i = 0; i < N; i++) {
+        if (numbers[i] == maxeven) found = 1;
+      }
+      __CPROVER_assert(found == 1, "maxeven ha d'existir a l'array");
+      // Comprovar que maxeven és parell
+      __CPROVER_assert(maxeven % 2 == 0, "maxeven ha de ser parell");
    }
      else {
-        // check that there are NO even numbers in the array
+        // No hi ha nombres parells: tots són senars
+        for (i = 0; i < N; i++) {
+          __CPROVER_assert(numbers[i] % 2 != 0,
+            "tots els nombres han de ser senars");
+        }
      }
 }
